@@ -4,7 +4,7 @@ import datetime
 
 class User(AbstractUser):
     email = models.EmailField(unique=True, null=False, blank=False)
-    name = models.CharField(max_length=100, null=False, blank=False)
+    nickname = models.CharField(max_length=100, null=False, blank=False)
     birthday = models.DateField(default=datetime.date.today, null=False, blank=False)
     GENDER_CHOICES = [
         ('M', 'Male'),
