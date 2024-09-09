@@ -25,7 +25,6 @@ class ProductListAPIview(APIView):  # 상품 목록 조회
 
 
 class ProductDetailAPIView(APIView):  # 상품 세부 목룍 조회
-
     def get_object(self, pk):
         return get_object_or_404(Product, pk=pk)
 
