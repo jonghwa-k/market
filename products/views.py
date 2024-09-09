@@ -1,47 +1,60 @@
-from django.shortcuts import render
-from django.http import JsonResponse, HttpResponse
-from django.core import serializers
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
+from rest_framework.response import Response
+from rest_framework.decorators import permission_classes
 from .models import Product
 from .serializers import ProductSerializer
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import PermissionDenied
 
 
-class ProductListAPIview(APIView):  # 상품 목록 조회
-    def get(self, request):  # 상품 목록 조회
-        products = Product.objects.all()
-        serializer = ProductSerializer(products, many=True)
-        return Response(serializer.data)
+class ProductPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 30
 
-    def post(self, request):  # 상품 등록
+
+class ProductListAPIView(APIView):
+    def get(self, request):
+        products = Product.objects.all().order_by('id')
+        paginator = ProductPagination()
+        page = paginator.paginate_queryset(products, request)
+        serializer = ProductSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    def post(self, request):
         serializer = ProductSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
-            # 예외 발생을 true 값으로 둠 -> 유효성 검사 통과하지 못하면 (serializer.errors,status=400) 내부적으로 실행
-            serializer.save()  # 유효성 검사 통과하면 products 생성
-            return Response(serializer.data, status=status.HTTP_201_CREATED)  # 201=created
+            serializer.save(author=request.user)
+            return Response(serializer.data, status=201)
 
 
-class ProductDetailAPIView(APIView):  # 상품 세부 목룍 조회
+class ProductDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get_object(self, pk):
         return get_object_or_404(Product, pk=pk)
 
-    def get(self, request, pk):  # 상품 세부 목록 조회
-        products = self.get_object(pk)
-        serializer = ProductSerializer(products)
+    def get(self, request, pk):
+        product = self.get_object(pk)
+        serializer = ProductSerializer(product)
         return Response(serializer.data)
 
-    def put(self, request, pk):  # 상품 수정
-        products = self.get_object(pk)
-        serializer = ProductSerializer(products, data=request.data, partial=True)
-        # partial=True : 부분 수정 가능
-        if serializer.is_valid(raise_exception=True):  # 유효성 검사 통과 못하면 error
+    def put(self, request, pk):
+        product = self.get_object(pk)
+        if request.user != product.author:
+            raise PermissionDenied("You do not have permission to edit this product.")
+        serializer = ProductSerializer(product, data=request.data, partial=True)
+        if serializer.is_valid(raise_exception=True):
             serializer.save()
-            return Response(serializer.data)  # 수정된 데이터 리턴
+            return Response(serializer.data)
 
-    def delete(self, request, pk):  # 상품 삭제
-        products = self.get_object(pk)  # 지울 products 조회
-        products.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    def delete(self, request, pk):
+        product = self.get_object(pk)
+        if request.user != product.author:
+            raise PermissionDenied("You do not have permission to delete this product.")
+        product.delete()
+        data = {"delete": f"Product({pk}) is deleted."}
+        return Response(data, status=status.HTTP_200_OK)
